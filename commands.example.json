@@ -1,0 +1,12 @@
+[
+  {
+    "label": "IPTV",
+    "keywords": ["iptv"],
+    "app_id": "REPLACE_WITH_IPTV_APP_ID"
+  },
+  {
+    "label": "Netflix",
+    "keywords": ["netflix"],
+    "app_id": "netflix"
+  }
+]
