@@ -31,17 +31,24 @@ apk update
 apk add python3 py3-pip openssh
 ```
 
-### 3. Enable SSH inside iSH (so Shortcuts can reach it)
+### 3. Enable SSH inside iSH, and make it start on its own
 
 ```sh
+apk add openssh openrc
 ssh-keygen -A
-passwd            # set a password for the default user, needed for SSH login
-/usr/sbin/sshd
+passwd            # set a password for root — the Shortcut logs in as root
+rc-update add sshd default
+sed -i 's/::sysinit:.*/::sysinit:\/sbin\/openrc sysinit/' /etc/inittab
 ```
 
-`sshd` doesn't survive iSH restarts by default — after reopening iSH, just
-run `/usr/sbin/sshd` again before using the Shortcut. (You can automate this
-later if you want; out of scope for v1.)
+Fully close iSH (swipe it away, don't just background it) and reopen it once
+so this takes effect. From then on, `sshd` starts automatically the moment
+iSH launches — you never have to type a command by hand to enable it again;
+the Shortcut in step 10 handles launching iSH for you.
+
+If this OpenRC autostart doesn't take on your iSH build (SSH connection
+refused when testing), the manual fallback always works: open iSH and run
+`/usr/sbin/sshd`.
 
 ### 4. Get the code into iSH
 
@@ -118,21 +125,30 @@ This should print what it matched and launch the app on the TV.
   TV's app responds. Apps like YouTube tend to support content deep-links
   more reliably than Netflix does.
 
-### 10. Wire up the iOS Shortcut
+### 10. Build the one-tap Shortcut
 
-In the **Shortcuts** app, create a new shortcut:
+Once this is built, using it means: tap the Shortcut (or say its name to
+Siri), speak, done — nothing to type or run by hand.
 
-1. **Dictate Text** (this is what you'll speak into).
-2. **Run Script Over SSH**:
-   - Host: `localhost`, Port: `22` (iSH's sshd)
-   - User / password: the iSH user you set in step 3
+In the **Shortcuts** app, create a new shortcut with these actions in order:
+
+1. **Open App** → iSH — this launches/wakes iSH so `sshd` (autostarted in
+   step 3) is actually running. It doesn't need to stay in the foreground.
+2. **Wait** → 2 seconds — gives iSH's startup a moment to finish. If the SSH
+   step below fails, increase this.
+3. **Dictate Text** — this is what you'll speak into.
+4. **Run Script Over SSH**:
+   - Host: `localhost`, Port: `22`
+   - User: `root`, Authentication: password (the one from step 3 above)
    - Script: `cd ~/Smarttvoperator && python3 voice_agent.py "$(Dictated Text)"`
-     (insert the *Dictated Text* variable from step 1 into the script field)
-3. Optionally add **Show Result** to see the SSH output.
-4. Add the Shortcut to your Home Screen for one-tap voice control.
+     (insert the *Dictated Text* variable from step 3 into the script field)
+5. **Show Result** (optional) — shows what it matched/launched.
 
-Note: iSH must be open (or at least running in the background) with `sshd`
-started for the SSH step to succeed.
+Add the Shortcut to your Home Screen, or give it a name and ask Siri for it.
+
+The very first time it runs, Shortcuts will show a one-time prompt to
+confirm the SSH host's fingerprint — that's a one-off security check, not
+something you'll see on every run.
 
 ## Files
 
