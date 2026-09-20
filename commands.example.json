@@ -1,12 +1,4 @@
-[
-  {
-    "label": "IPTV",
-    "keywords": ["iptv"],
-    "app_id": "REPLACE_WITH_IPTV_APP_ID"
-  },
-  {
-    "label": "Netflix",
-    "keywords": ["netflix"],
-    "app_id": "netflix"
-  }
-]
+{
+  "_comment": "Optional aliases only. Any installed app can already be opened by saying its real name (fuzzy-matched) — you don't need an entry here for that. Add one only when your spoken phrase doesn't resemble the app's actual title, e.g. you say 'iptv' but the installed app is titled something else.",
+  "iptv": "REPLACE_WITH_IPTV_APP_ID_OR_TITLE"
+}

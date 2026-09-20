@@ -1,39 +1,46 @@
 #!/usr/bin/env python3
-"""Entry point: transcribed text -> command match -> TV action.
+"""Entry point: transcribed text -> parsed command -> TV action.
+
+Supported phrasing:
+    "open netflix" / "launch iptv" / "start youtube"   -> just opens the app
+    "play scandal in netflix" / "play x on youtube"    -> opens the app and
+                                                           tries to pass the
+                                                           content along
+    "netflix"                                          -> bare app name also
+                                                           works
+
+Any app name is matched against the TV's actual installed apps (fuzzy,
+case-insensitive), so this isn't limited to a fixed list. `commands.json` is
+optional and only needed for aliases (e.g. you say "iptv" but the app title
+is something else).
 
 On iSH there's no local speech-to-text, so the transcription happens in an
 iOS Shortcut (native dictation) which passes the text in here, either as a
 command-line argument (via the Shortcuts "Run Script Over SSH" action) or
 piped over stdin for manual testing:
 
-    python3 voice_agent.py "open iptv"
+    python3 voice_agent.py "play scandal in netflix"
     echo "open iptv" | python3 voice_agent.py
 """
 import asyncio
-import json
+import re
 import sys
-from pathlib import Path
 
-from tv_control import launch_app, load_config
+from tv_control import AppNotFoundError, launch, load_aliases, load_config
 
-COMMANDS_PATH = Path(__file__).parent / "commands.json"
-
-
-def load_commands() -> list[dict]:
-    if not COMMANDS_PATH.exists():
-        sys.exit(
-            f"{COMMANDS_PATH} not found. Copy commands.example.json to "
-            "commands.json and fill in your app IDs."
-        )
-    return json.loads(COMMANDS_PATH.read_text())
+PLAY_RE = re.compile(r"^\s*play\s+(?P<content>.+?)\s+(?:on|in)\s+(?P<app>.+?)\s*$", re.I)
+OPEN_RE = re.compile(r"^\s*(?:open|launch|start)\s+(?P<app>.+?)\s*$", re.I)
 
 
-def match_command(text: str, commands: list[dict]) -> dict | None:
-    text = text.lower()
-    for command in commands:
-        if any(keyword.lower() in text for keyword in command["keywords"]):
-            return command
-    return None
+def parse_command(text: str) -> tuple[str, str | None]:
+    """Return (app_query, content_query) parsed from free-form text."""
+    match = PLAY_RE.match(text)
+    if match:
+        return match.group("app").strip(), match.group("content").strip()
+    match = OPEN_RE.match(text)
+    if match:
+        return match.group("app").strip(), None
+    return text.strip(), None
 
 
 def get_input_text() -> str:
@@ -49,12 +56,7 @@ def main() -> None:
         return
     print(f"Heard: {text!r}")
 
-    commands = load_commands()
-    command = match_command(text, commands)
-    if command is None:
-        print(f"No matching command for: {text!r}")
-        return
-    print(f"Matched: {command['label']} -> launching app {command['app_id']}")
+    app_query, content_query = parse_command(text)
 
     config = load_config()
     host = config.get("host")
@@ -62,8 +64,21 @@ def main() -> None:
     if not host or not client_key:
         sys.exit("TV not paired yet. Run `python3 tv_control.py pair` first.")
 
-    asyncio.run(launch_app(host, client_key, command["app_id"]))
-    print("Done.")
+    try:
+        app = asyncio.run(launch(host, client_key, app_query, content_query, load_aliases()))
+    except AppNotFoundError as err:
+        print(err)
+        return
+
+    print(f"Launched: {app.get('title')} ({app.get('id')})")
+    if content_query:
+        print(
+            f"Passed along content query {content_query!r} — note that LG's "
+            "webOS API has no documented, reliable way to search inside an "
+            "app like Netflix by title, so it may just open to the app's "
+            "home/search screen rather than actually playing it. Check the "
+            "TV and let me know what happened so this can be tuned."
+        )
 
 
 if __name__ == "__main__":

@@ -80,24 +80,43 @@ python3 tv_control.py list-apps
 This prints every installed app as `<app_id>\t<title>`. Find the IPTV app in
 the list and copy its `app_id`.
 
-### 8. Configure command phrases
+### 8. (Optional) Set up phrase aliases
+
+You don't need to pre-register apps — `voice_agent.py` fuzzy-matches any
+spoken app name against the TV's real installed-app list, so "open netflix",
+"open iptv", "launch prime video" etc. all work out of the box for whatever
+is actually installed.
+
+Only add an alias if what you say doesn't resemble the app's real title
+(e.g. you say "iptv" but it's installed under a different name):
 
 ```sh
 cp commands.example.json commands.json
 ```
 
-Edit `commands.json` and replace `REPLACE_WITH_IPTV_APP_ID` with the app ID
-you found in step 7. Add more entries the same way — each entry is
-`{"label": ..., "keywords": [...], "app_id": ...}`, and matching is a simple
-case-insensitive substring check against the transcribed text.
+Edit `commands.json` — it's a flat `{"spoken phrase": "app id or title"}` map.
 
 ### 9. Test the pipeline manually (no voice yet)
 
 ```sh
 python3 voice_agent.py "open iptv"
+python3 voice_agent.py "open netflix"
+python3 voice_agent.py "play scandal in netflix"
 ```
 
 This should print what it matched and launch the app on the TV.
+
+**Supported phrasing:**
+- `open <app>` / `launch <app>` / `start <app>` — opens any installed app
+- `<app>` on its own (e.g. just "netflix") — same as above
+- `play <content> in/on <app>` — opens the app and passes the content along
+  as a best-effort `contentId`. **Caveat:** LG's webOS API has no documented,
+  reliable way to search inside an app like Netflix by title text — this may
+  just open Netflix's home/search screen instead of actually playing
+  "Scandal". Try it on your TV and see what actually happens; the matching
+  logic in `tv_control.py`'s `launch()` can be tuned once you know how your
+  TV's app responds. Apps like YouTube tend to support content deep-links
+  more reliably than Netflix does.
 
 ### 10. Wire up the iOS Shortcut
 
@@ -117,12 +136,14 @@ started for the SSH step to succeed.
 
 ## Files
 
-- `tv_control.py` — pairing, `list_apps()`, `launch_app()` (CLI: `pair`,
-  `list-apps`, `launch <app_id>`)
-- `commands.example.json` / `commands.json` — phrase-to-app mapping (not
-  committed; copy the example)
-- `voice_agent.py` — entry point: takes transcribed text, matches it, launches
-  the app
+- `tv_control.py` — pairing, app listing, fuzzy app resolution, and launching
+  (CLI: `pair`, `list-apps`, `launch <name-or-id> [--content ...]`)
+- `commands.example.json` / `commands.json` — optional phrase aliases for
+  apps whose spoken name doesn't match their real title (not committed; copy
+  the example)
+- `voice_agent.py` — entry point: takes transcribed text, parses
+  "open/play X (in Y)", resolves the app against the TV's real app list, and
+  launches it
 - `config.example.json` / `config.json` — TV host + paired client key (not
   committed; copy the example)
 
