@@ -65,20 +65,14 @@ def main() -> None:
         sys.exit("TV not paired yet. Run `python3 tv_control.py pair` first.")
 
     try:
-        app = asyncio.run(launch(host, client_key, app_query, content_query, load_aliases()))
+        app, note = asyncio.run(launch(host, client_key, app_query, content_query, load_aliases()))
     except AppNotFoundError as err:
         print(err)
         return
 
     print(f"Launched: {app.get('title')} ({app.get('id')})")
-    if content_query:
-        print(
-            f"Passed along content query {content_query!r} — note that LG's "
-            "webOS API has no documented, reliable way to search inside an "
-            "app like Netflix by title, so it may just open to the app's "
-            "home/search screen rather than actually playing it. Check the "
-            "TV and let me know what happened so this can be tuned."
-        )
+    if note:
+        print(note)
 
 
 if __name__ == "__main__":

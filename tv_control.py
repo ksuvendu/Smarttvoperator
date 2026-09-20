@@ -4,17 +4,19 @@ Usage:
     python3 tv_control.py pair                          # one-time pairing, saves client key
     python3 tv_control.py list-apps                      # print installed apps and their IDs
     python3 tv_control.py launch <name-or-id>            # launch an app, fuzzy-matched by name
-    python3 tv_control.py launch <name-or-id> --content "scandal"   # experimental: pass a
-                                                          # contentId/search term to the app
+    python3 tv_control.py launch <name-or-id> --content "scandal"   # experimental: pass
+                                                          # content along (see launch() below
+                                                          # for how this differs per app)
 """
 import argparse
 import asyncio
 import difflib
 import json
 import sys
+import urllib.parse
 from pathlib import Path
 
-from aiowebostv import WebOsClient, WebOsTvPairError
+from aiowebostv import WebOsClient, WebOsTvPairError, endpoints as ep
 
 CONFIG_PATH = Path(__file__).parent / "config.json"
 COMMANDS_PATH = Path(__file__).parent / "commands.json"
@@ -98,14 +100,27 @@ async def pair(host: str) -> None:
     print(f"Paired successfully. Client key saved to {CONFIG_PATH}")
 
 
+def _is_youtube(app_id: str) -> bool:
+    return "youtube" in app_id.lower()
+
+
 async def launch(
     host: str,
     client_key: str | None,
     app_query: str,
     content_query: str | None = None,
     aliases: dict[str, str] | None = None,
-) -> dict:
-    """Resolve app_query against installed apps and launch it (optionally with content)."""
+) -> tuple[dict, str | None]:
+    """Resolve app_query against installed apps and launch it (optionally with content).
+
+    Returns (app, note). note describes what was done with content_query (None
+    if there was no content_query). webOS's contentId launch param is really
+    meant for an exact video ID/URL, not free-text search, and Netflix has no
+    documented search API at all — so for YouTube specifically this instead
+    opens a YouTube search-results page in the TV's browser, which is a
+    documented SSAP call (system.launcher/open) and actually shows the
+    requested content. Everything else still gets the best-effort contentId.
+    """
     client = WebOsClient(host, client_key=client_key)
     await client.connect()
     try:
@@ -116,11 +131,23 @@ async def launch(
             raise AppNotFoundError(
                 f"No installed app matches {app_query!r}. Installed apps: {titles}"
             )
-        if content_query:
+
+        note = None
+        if content_query and _is_youtube(app["id"]):
+            search_url = "https://www.youtube.com/results?search_query=" + urllib.parse.quote(
+                content_query
+            )
+            await client.request(ep.OPEN, {"target": search_url})
+            note = f"opened a YouTube search for {content_query!r} in the TV's browser"
+        elif content_query:
             await client.launch_app_with_content_id(app["id"], content_query)
+            note = (
+                f"passed {content_query!r} to {app.get('title')} as a contentId "
+                "(best-effort — not all apps act on this)"
+            )
         else:
             await client.launch_app(app["id"])
-        return app
+        return app, note
     finally:
         await client.disconnect()
 
@@ -159,10 +186,12 @@ def main() -> None:
             print(f"{app.get('id')}\t{app.get('title')}")
     elif args.cmd == "launch":
         try:
-            app = asyncio.run(launch(host, client_key, args.app, args.content, load_aliases()))
+            app, note = asyncio.run(launch(host, client_key, args.app, args.content, load_aliases()))
         except AppNotFoundError as err:
             sys.exit(str(err))
         print(f"Launched: {app.get('title')} ({app.get('id')})")
+        if note:
+            print(note)
 
 
 if __name__ == "__main__":
